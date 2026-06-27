@@ -125,6 +125,21 @@
 
             <main class="content">
                 <div id="chart" class="chart-container"></div>
+                <div id="focusedIndicator" class="focused-indicator">
+                    <span id="focusedText">一级关系网</span>
+                    <button id="focusedClose" class="focused-close">×</button>
+                </div>
+                <div id="nodePopup" class="node-popup">
+                    <button class="popup-close" id="popupClose">×</button>
+                    <div class="popup-header">
+                        <img class="popup-avatar" id="popupAvatar" src="" alt="">
+                        <div class="popup-titles">
+                            <div class="popup-name" id="popupName"></div>
+                            <div class="popup-type" id="popupType"></div>
+                        </div>
+                    </div>
+                    <div class="popup-info-list" id="popupInfoList"></div>
+                </div>
                 <div id="loadingOverlay" class="loading-overlay" style="display:none;">
                     <div class="loading-spinner"></div>
                     <div id="loadingText" class="loading-text">加载中...</div>

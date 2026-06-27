@@ -20,12 +20,25 @@ let pollTimer = null;
 let completedGroupIds = new Set();
 let showLabels = true;
 
+let viewMode = "default";
+let focusedNodeId = null;
+let clickTimer = null;
+let clickDelay = 300;
+
 const COLORS = {
     self: "#FFD700",
     friend: "#4A90D9",
     acquaintance: "#87CEEB",
     stranger: "#B0C4DE",
     group: "#E74C3C"
+};
+
+const TYPE_LABELS = {
+    self: "自己",
+    friend: "好友",
+    acquaintance: "共同群好友",
+    stranger: "仅同群",
+    group: "群"
 };
 
 document.addEventListener("DOMContentLoaded", init);
@@ -38,166 +51,25 @@ function init() {
     window.addEventListener("resize", () => chart && chart.resize());
 }
 
-let highlightedNodeId = null;
-
 function initChart() {
-    renderChart();
-}
-
-function renderChart() {
     const chartDom = document.getElementById("chart");
-    if (chart) {
-        chart.dispose();
-    }
     chart = echarts.init(chartDom);
-    const option = {
-        series: [{
-            type: "graph",
-            layout: "force",
-            data: graphData.nodes,
-            links: graphData.links,
-            categories: graphData.categories,
-            roam: true,
-            draggable: true,
-            label: {
-                show: showLabels
-            },
-            force: {
-                repulsion: 50,
-                edgeLength: 80,
-                gravity: 0.1,
-                friction: 0.95
-            }
-        }]
-    };
-    chart.setOption(option);
+    renderCurrentView();
     bindChartEvents();
 }
 
-function bindChartEvents() {
-    chart.on("click", function(params) {
-        if (params.dataType === "node") {
-            if (highlightedNodeId === params.data.id) {
-                clearHighlight();
-            } else {
-                highlightNode(params.data.id);
-            }
-        } else {
-            clearHighlight();
-        }
-    });
-}
-
-function getNeighborIds(nodeId) {
-    const neighbors = new Set();
-    neighbors.add(String(nodeId));
-    graphData.links.forEach(link => {
-        const src = String(link.source);
-        const tgt = String(link.target);
-        if (src === String(nodeId)) {
-            neighbors.add(tgt);
-        }
-        if (tgt === String(nodeId)) {
-            neighbors.add(src);
-        }
-    });
-    return neighbors;
-}
-
-function highlightNode(nodeId) {
-    highlightedNodeId = String(nodeId);
-    const neighborIds = getNeighborIds(nodeId);
-    // 先按复选框过滤，再应用高亮
-    const showSelf = document.getElementById("optSelf").checked;
-    const showFriends = document.getElementById("optFriends").checked;
-    const showAcquaintance = document.getElementById("optAcquaintance").checked;
-    const showStranger = document.getElementById("optStranger").checked;
-    const showGroups = document.getElementById("optGroups").checked;
-    const filteredNodes = graphData.nodes.filter(n => {
-        if (n.type === "self") return showSelf;
-        if (n.type === "friend") return showFriends;
-        if (n.type === "acquaintance") return showAcquaintance;
-        if (n.type === "stranger") return showStranger;
-        if (n.type === "group") return showGroups;
-        return true;
-    });
-    const visibleIds = new Set(filteredNodes.map(n => n.id));
-    const newNodes = graphData.nodes.map(node => {
-        const nid = String(node.id);
-        const isVisible = visibleIds.has(nid);
-        const isRelated = neighborIds.has(nid);
-        return {
-            ...node,
-            itemStyle: {
-                ...node.itemStyle,
-                opacity: isVisible ? (isRelated ? 1 : 0.1) : 0
-            },
-            label: {
-                opacity: isVisible ? (isRelated ? 1 : 0.1) : 0
-            }
-        };
-    });
-    const newLinks = graphData.links.map(link => {
-        const src = String(link.source);
-        const tgt = String(link.target);
-        const srcVisible = visibleIds.has(src);
-        const tgtVisible = visibleIds.has(tgt);
-        const isRelated = src === String(nodeId) || tgt === String(nodeId);
-        return {
-            ...link,
-            lineStyle: {
-                ...(link.lineStyle || {}),
-                opacity: (srcVisible && tgtVisible) ? (isRelated ? 1 : 0.05) : 0
-            }
-        };
-    });
-    chart.setOption({
-        series: [{
-            data: newNodes,
-            links: newLinks
-        }]
-    });
-}
-
-function clearHighlight() {
-    highlightedNodeId = null;
-    updateVisibility();
-}
-
-function getBaseOption() {
+function getBaseOption(nodes, links) {
     return {
-        title: {
-            show: false
-        },
         tooltip: {
             trigger: "item",
             formatter: function(params) {
                 if (params.dataType === "node") {
                     const info = params.data.info || {};
-                    const typeMap = {
-                        "self": "自己",
-                        "friend": "好友",
-                        "acquaintance": "共同群好友",
-                        "stranger": "仅同群",
-                        "group": "群"
-                    };
                     let html = `<div style="font-weight:bold;margin-bottom:5px;">${params.data.name}</div>`;
-                    html += `<div style="font-size:12px;color:#666;">类型: ${typeMap[params.data.type] || params.data.type}</div>`;
-                    if (info.qq) {
-                        html += `<div style="font-size:12px;color:#666;">QQ: ${info.qq}</div>`;
-                    }
-                    if (info.remark) {
-                        html += `<div style="font-size:12px;color:#666;">备注: ${info.remark}</div>`;
-                    }
-                    if (info.card) {
-                        html += `<div style="font-size:12px;color:#666;">群名片: ${info.card}</div>`;
-                    }
-                    if (info.common_group_count !== undefined) {
-                        html += `<div style="font-size:12px;color:#666;">共同群数: ${info.common_group_count}</div>`;
-                    }
-                    if (info.member_count !== undefined) {
-                        html += `<div style="font-size:12px;color:#666;">成员数: ${info.member_count}</div>`;
-                    }
+                    html += `<div style="font-size:12px;color:#666;">类型: ${TYPE_LABELS[params.data.type] || params.data.type}</div>`;
+                    if (info.qq) html += `<div style="font-size:12px;color:#666;">QQ: ${info.qq}</div>`;
+                    if (info.common_group_count !== undefined) html += `<div style="font-size:12px;color:#666;">共同群数: ${info.common_group_count}</div>`;
+                    if (info.member_count !== undefined) html += `<div style="font-size:12px;color:#666;">成员数: ${info.member_count}</div>`;
                     html += `<div style="font-size:12px;color:#666;">关联数: ${params.data.value}</div>`;
                     return html;
                 }
@@ -216,21 +88,16 @@ function getBaseOption() {
         series: [{
             type: "graph",
             layout: "force",
-            data: graphData.nodes,
-            links: graphData.links,
+            data: nodes,
+            links: links,
             categories: graphData.categories,
             roam: true,
             draggable: true,
             label: {
-                show: true,
+                show: showLabels,
                 position: "right",
                 formatter: "{b}",
                 fontSize: 11
-            },
-            lineStyle: {
-                color: "source",
-                curveness: 0.1,
-                opacity: 0.4
             },
             lineStyle: {
                 color: "#aaa",
@@ -245,26 +112,281 @@ function getBaseOption() {
                 }
             },
             force: {
-                repulsion: 30,
-                edgeLength: 100,
-                gravity: 0.3,
-                friction: 0.98
+                repulsion: 100,
+                edgeLength: 50,
+                gravity: 0.1,
+                friction: 0.9
             }
         }]
     };
+}
+
+function renderCurrentView() {
+    const { nodes, links } = getCurrentViewData();
+    const option = getBaseOption(nodes, links);
+    chart.setOption(option, { notMerge: true, lazyUpdate: false });
+}
+
+function getCurrentViewData() {
+    if (viewMode === "focused" && focusedNodeId) {
+        return getFocusedViewData(focusedNodeId);
+    }
+    return getDefaultViewData();
+}
+
+function getDefaultViewData() {
+    const showSelf = document.getElementById("optSelf").checked;
+    const showFriends = document.getElementById("optFriends").checked;
+    const showAcquaintance = document.getElementById("optAcquaintance").checked;
+    const showStranger = document.getElementById("optStranger").checked;
+    const showGroups = document.getElementById("optGroups").checked;
+
+    const filteredNodes = graphData.nodes.filter(n => {
+        if (n.type === "self") return showSelf;
+        if (n.type === "friend") return showFriends;
+        if (n.type === "acquaintance") return showAcquaintance;
+        if (n.type === "stranger") return showStranger;
+        if (n.type === "group") return showGroups;
+        return true;
+    });
+
+    const visibleIds = new Set(filteredNodes.map(n => String(n.id)));
+    const filteredLinks = graphData.links.filter(l =>
+        visibleIds.has(String(l.source)) && visibleIds.has(String(l.target))
+    );
+
+    return { nodes: filteredNodes, links: filteredLinks };
+}
+
+function getFocusedViewData(nodeId) {
+    const nid = String(nodeId);
+    const node = nodeMap[nid];
+    if (!node) return { nodes: [], links: [] };
+
+    const showStranger = document.getElementById("optStranger").checked;
+    const visibleNodeIds = new Set();
+    visibleNodeIds.add(nid);
+
+    const selfNode = graphData.nodes.find(n => n.type === "self");
+    if (selfNode) {
+        visibleNodeIds.add(String(selfNode.id));
+    }
+
+    if (node.type === "group") {
+        graphData.links.forEach(link => {
+            const src = String(link.source);
+            const tgt = String(link.target);
+            if (src === nid || tgt === nid) {
+                const otherId = src === nid ? tgt : src;
+                const otherNode = nodeMap[otherId];
+                if (otherNode) {
+                    if (otherNode.type === "stranger" && !showStranger) return;
+                    visibleNodeIds.add(otherId);
+                }
+            }
+        });
+    } else if (node.type === "friend" || node.type === "acquaintance") {
+        const neighborGroupIds = new Set();
+        graphData.links.forEach(link => {
+            const src = String(link.source);
+            const tgt = String(link.target);
+            if (src === nid || tgt === nid) {
+                const otherId = src === nid ? tgt : src;
+                const otherNode = nodeMap[otherId];
+                if (otherNode && otherNode.type === "group") {
+                    neighborGroupIds.add(otherId);
+                }
+            }
+        });
+        neighborGroupIds.forEach(gid => visibleNodeIds.add(gid));
+    }
+
+    const filteredNodes = graphData.nodes.filter(n => visibleNodeIds.has(String(n.id)));
+    const filteredLinks = graphData.links.filter(l =>
+        visibleNodeIds.has(String(l.source)) && visibleNodeIds.has(String(l.target))
+    );
+
+    return { nodes: filteredNodes, links: filteredLinks };
+}
+
+function bindChartEvents() {
+    chart.on("click", function(params) {
+        if (params.dataType === "node") {
+            handleNodeClick(params);
+        } else {
+            handleBlankClick();
+        }
+    });
+}
+
+function handleNodeClick(params) {
+    const nodeId = String(params.data.id);
+    if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+        handleNodeDoubleClick(nodeId);
+    } else {
+        clickTimer = setTimeout(() => {
+            clickTimer = null;
+            handleNodeSingleClick(nodeId, params);
+        }, clickDelay);
+    }
+}
+
+function handleNodeSingleClick(nodeId, params) {
+    showNodePopup(nodeId, params.event);
+}
+
+function handleNodeDoubleClick(nodeId) {
+    hideNodePopup();
+    enterFocusedView(nodeId);
+}
+
+function handleBlankClick() {
+    hideNodePopup();
+    if (viewMode === "focused") {
+        exitFocusedView();
+    }
+}
+
+function showNodePopup(nodeId, event) {
+    const node = nodeMap[String(nodeId)];
+    if (!node) return;
+
+    const popup = document.getElementById("nodePopup");
+    const avatarEl = document.getElementById("popupAvatar");
+    const nameEl = document.getElementById("popupName");
+    const typeEl = document.getElementById("popupType");
+    const infoListEl = document.getElementById("popupInfoList");
+
+    nameEl.textContent = node.name || "未知";
+    typeEl.textContent = TYPE_LABELS[node.type] || node.type;
+
+    if (node.type === "group") {
+        avatarEl.style.display = "none";
+        if (!document.querySelector(".popup-avatar-group")) {
+            const groupAvatar = document.createElement("div");
+            groupAvatar.className = "popup-avatar-group";
+            groupAvatar.id = "popupGroupAvatar";
+            groupAvatar.textContent = "群";
+            avatarEl.parentNode.insertBefore(groupAvatar, avatarEl);
+        }
+    } else {
+        const groupAvatar = document.getElementById("popupGroupAvatar");
+        if (groupAvatar) groupAvatar.remove();
+        avatarEl.style.display = "block";
+        const qq = node.info?.qq || node.id;
+        avatarEl.src = `https://q.qlogo.cn/headimg_dl?dst_uin=${qq}&spec=100`;
+        avatarEl.onerror = function() {
+            this.src = "";
+            this.style.display = "none";
+        };
+    }
+
+    const info = node.info || {};
+    let infoHtml = "";
+
+    if (node.type !== "group" && info.qq) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">QQ号</span><span class="popup-info-value">${info.qq}</span></div>`;
+    }
+    if (info.remark) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">备注</span><span class="popup-info-value">${info.remark}</span></div>`;
+    }
+    if (info.card) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">群名片</span><span class="popup-info-value">${info.card}</span></div>`;
+    }
+    if (info.common_group_count !== undefined) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">共同群</span><span class="popup-info-value">${info.common_group_count} 个</span></div>`;
+    }
+    if (info.member_count !== undefined) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">成员数</span><span class="popup-info-value">${info.member_count} 人</span></div>`;
+    }
+    if (info.group_id) {
+        infoHtml += `<div class="popup-info-item"><span class="popup-info-label">群号</span><span class="popup-info-value">${info.group_id}</span></div>`;
+    }
+    infoHtml += `<div class="popup-info-item"><span class="popup-info-label">关联数</span><span class="popup-info-value">${node.value || 0}</span></div>`;
+
+    infoListEl.innerHTML = infoHtml;
+
+    const chartRect = document.getElementById("chart").getBoundingClientRect();
+    const contentRect = document.querySelector(".content").getBoundingClientRect();
+    const popupWidth = 280;
+    const popupHeight = 200;
+    let left = (event?.offsetX || 100) + 20;
+    let top = (event?.offsetY || 100) - 20;
+
+    if (left + popupWidth > chartRect.width - 10) {
+        left = (event?.offsetX || 100) - popupWidth - 20;
+    }
+    if (top + popupHeight > chartRect.height - 10) {
+        top = chartRect.height - popupHeight - 10;
+    }
+    if (top < 10) top = 10;
+    if (left < 10) left = 10;
+
+    popup.style.left = left + "px";
+    popup.style.top = top + "px";
+    popup.classList.add("show");
+}
+
+function hideNodePopup() {
+    const popup = document.getElementById("nodePopup");
+    popup.classList.remove("show");
+}
+
+function enterFocusedView(nodeId) {
+    const node = nodeMap[String(nodeId)];
+    if (!node) return;
+
+    viewMode = "focused";
+    focusedNodeId = String(nodeId);
+
+    const indicator = document.getElementById("focusedIndicator");
+    const textEl = document.getElementById("focusedText");
+    textEl.textContent = `一级关系网: ${node.name}（点击空白处返回）`;
+    indicator.classList.add("show");
+
+    renderCurrentView();
+}
+
+function exitFocusedView() {
+    viewMode = "default";
+    focusedNodeId = null;
+
+    const indicator = document.getElementById("focusedIndicator");
+    indicator.classList.remove("show");
+
+    renderCurrentView();
 }
 
 function bindEvents() {
     document.getElementById("btnRefresh").addEventListener("click", refreshData);
     document.getElementById("btnLoadAll").addEventListener("click", startLoadingAll);
     document.getElementById("btnStop").addEventListener("click", stopLoading);
-    document.getElementById("optSelf").addEventListener("change", updateVisibility);
-    document.getElementById("optFriends").addEventListener("change", updateVisibility);
-    document.getElementById("optAcquaintance").addEventListener("change", updateVisibility);
-    document.getElementById("optStranger").addEventListener("change", updateVisibility);
-    document.getElementById("optGroups").addEventListener("change", updateVisibility);
+    document.getElementById("optSelf").addEventListener("change", updateView);
+    document.getElementById("optFriends").addEventListener("change", updateView);
+    document.getElementById("optAcquaintance").addEventListener("change", updateView);
+    document.getElementById("optStranger").addEventListener("change", updateView);
+    document.getElementById("optGroups").addEventListener("change", updateView);
     document.getElementById("optLabels").addEventListener("change", toggleLabels);
     document.getElementById("groupSearch").addEventListener("input", filterGroups);
+    document.getElementById("popupClose").addEventListener("click", hideNodePopup);
+    document.getElementById("focusedClose").addEventListener("click", exitFocusedView);
+
+    document.querySelector(".content").addEventListener("click", function(e) {
+        if (e.target.id === "chart" || e.target === this) {
+            hideNodePopup();
+        }
+    });
+}
+
+function updateView() {
+    renderCurrentView();
+}
+
+function toggleLabels() {
+    showLabels = document.getElementById("optLabels").checked;
+    renderCurrentView();
 }
 
 async function checkStatus() {
@@ -321,7 +443,7 @@ async function loadRelationData() {
             graphData = data.data;
             rebuildNodeMap();
             updateStats(data.stats.node_count, data.stats.link_count);
-            updateVisibility();
+            renderCurrentView();
         }
     } catch (e) {
         console.error("加载关系数据失败:", e);
@@ -331,39 +453,40 @@ async function loadRelationData() {
 function rebuildNodeMap() {
     nodeMap = {};
     linkMap = {};
-    graphData.nodes.forEach(n => nodeMap[n.id] = n);
+    graphData.nodes.forEach(n => nodeMap[String(n.id)] = n);
     graphData.links.forEach(l => {
-        const key = l.source < l.target ? `${l.source}-${l.target}` : `${l.target}-${l.source}`;
+        const src = String(l.source);
+        const tgt = String(l.target);
+        const key = src < tgt ? `${src}-${tgt}` : `${tgt}-${src}`;
         linkMap[key] = l;
     });
-}
-
-function updateChart() {
-    if (!document.getElementById("chart")) return;
-    renderChart();
 }
 
 function incrementalUpdate(delta) {
     if (!delta) return;
     delta.new_nodes.forEach(node => {
-        if (!nodeMap[node.id]) {
+        const nid = String(node.id);
+        if (!nodeMap[nid]) {
             graphData.nodes.push(node);
-            nodeMap[node.id] = node;
+            nodeMap[nid] = node;
         }
     });
     delta.new_links.forEach(link => {
-        const key = link.source < link.target ? `${link.source}-${link.target}` : `${link.target}-${link.source}`;
+        const src = String(link.source);
+        const tgt = String(link.target);
+        const key = src < tgt ? `${src}-${tgt}` : `${tgt}-${src}`;
         if (!linkMap[key]) {
             graphData.links.push(link);
             linkMap[key] = link;
         }
     });
     delta.updated_nodes.forEach(node => {
-        if (nodeMap[node.id]) {
-            Object.assign(nodeMap[node.id], node);
+        const nid = String(node.id);
+        if (nodeMap[nid]) {
+            Object.assign(nodeMap[nid], node);
         }
     });
-    updateVisibility();
+    renderCurrentView();
 }
 
 function updateStats(nodes, links) {
@@ -520,6 +643,8 @@ async function refreshData() {
         showToast("正在加载中，请先停止", "warning");
         return;
     }
+    exitFocusedView();
+    hideNodePopup();
     showLoading("正在刷新数据...");
     try {
         await fetch(API_BASE + "/api/reset", { method: "POST" });
@@ -531,41 +656,6 @@ async function refreshData() {
     } finally {
         hideLoading();
     }
-}
-
-function updateVisibility() {
-    const showSelf = document.getElementById("optSelf").checked;
-    const showFriends = document.getElementById("optFriends").checked;
-    const showAcquaintance = document.getElementById("optAcquaintance").checked;
-    const showStranger = document.getElementById("optStranger").checked;
-    const showGroups = document.getElementById("optGroups").checked;
-    const filteredNodes = graphData.nodes.filter(n => {
-        if (n.type === "self") return showSelf;
-        if (n.type === "friend") return showFriends;
-        if (n.type === "acquaintance") return showAcquaintance;
-        if (n.type === "stranger") return showStranger;
-        if (n.type === "group") return showGroups;
-        return true;
-    });
-    const visibleIds = new Set(filteredNodes.map(n => n.id));
-    const filteredLinks = graphData.links.filter(l =>
-        visibleIds.has(String(l.source)) && visibleIds.has(String(l.target))
-    );
-    const tempNodes = graphData.nodes;
-    const tempLinks = graphData.links;
-    graphData.nodes = filteredNodes;
-    graphData.links = filteredLinks;
-    renderChart();
-    graphData.nodes = tempNodes;
-    graphData.links = tempLinks;
-}
-
-function toggleLabels() {
-    showLabels = document.getElementById("optLabels").checked;
-    updateVisibility();
-}
-
-function onChartClick(params) {
 }
 
 function showLoading(text = "加载中...") {
