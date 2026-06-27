@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QQ 关系网可视化工具</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-left">
+                <h1>🕸️ QQ 关系网可视化</h1>
+            </div>
+            <div class="header-right">
+                <div id="connectionStatus" class="status-badge status-disconnected">
+                    <span class="status-dot"></span>
+                    <span class="status-text">未连接</span>
+                </div>
+                <button id="btnRefresh" class="btn btn-secondary" title="刷新数据">
+                    🔄 刷新
+                </button>
+                <button id="btnLoadAll" class="btn btn-primary">
+                    🚀 加载全部群成员
+                </button>
+                <button id="btnStop" class="btn btn-danger" style="display:none;">
+                    ⏹ 停止
+                </button>
+            </div>
+        </header>
+
+        <div class="progress-bar-container" id="progressContainer" style="display:none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">0 / 0 群</div>
+        </div>
+
+        <div class="main-content">
+            <aside class="sidebar">
+                <div class="panel">
+                    <h3>📊 数据统计</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">好友数</div>
+                            <div class="stat-value" id="statFriends">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">群数</div>
+                            <div class="stat-value" id="statGroups">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">总节点</div>
+                            <div class="stat-value" id="statNodes">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">总边数</div>
+                            <div class="stat-value" id="statLinks">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>🎨 显示选项</h3>
+                    <div class="option-list">
+                        <label class="option-item">
+                            <input type="checkbox" id="optSelf" checked>
+                            <span class="color-dot" style="background:#FFD700;"></span>
+                            自己
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="optFriends" checked>
+                            <span class="color-dot" style="background:#4A90D9;"></span>
+                            好友
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="optAcquaintance" checked>
+                            <span class="color-dot" style="background:#87CEEB;"></span>
+                            共同群好友
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="optStranger">
+                            <span class="color-dot" style="background:#B0C4DE;"></span>
+                            仅同群
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="optGroups" checked>
+                            <span class="color-dot" style="background:#E74C3C;"></span>
+                            群
+                        </label>
+                    </div>
+                    <div class="option-list">
+                        <label class="option-item">
+                            <input type="checkbox" id="optLabels" checked>
+                            显示标签
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>👥 群列表</h3>
+                    <div class="group-search">
+                        <input type="text" id="groupSearch" placeholder="搜索群...">
+                    </div>
+                    <div class="group-list" id="groupList">
+                        <div class="empty-hint">加载中...</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>⚙️ 加载设置</h3>
+                    <div class="setting-item">
+                        <label>线程数</label>
+                        <select id="threadCount">
+                            <option value="1">1 (最慢，最安全)</option>
+                            <option value="2">2</option>
+                            <option value="3" selected>3 (推荐)</option>
+                            <option value="5">5 (较快)</option>
+                            <option value="8">8 (最快，风险高)</option>
+                        </select>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="content">
+                <div id="chart" class="chart-container"></div>
+                <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+                    <div class="loading-spinner"></div>
+                    <div id="loadingText" class="loading-text">加载中...</div>
+                </div>
+            </main>
+        </div>
+
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

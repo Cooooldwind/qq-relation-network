@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ECharts Debug Test</title>
+    <script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #chart { width: 100vw; height: 100vh; background: #1a1a2e; }
+        #log { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; font-size: 12px; z-index: 999; max-width: 500px; max-height: 80vh; overflow: auto; }
+        button { margin: 2px; padding: 4px 8px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="log">
+        <div>Loading...</div>
+        <button onclick="test1()">测试1: 清理字段(只留id/name/category/symbolSize)</button>
+        <button onclick="test2()">测试2: 小批量数据(前20个节点)</button>
+        <button onclick="test3()">测试3: 检查重复ID</button>
+        <button onclick="test4()">测试4: 检查无效link</button>
+    </div>
+    <div id="chart"></div>
+    <script>
+        let graphData = null;
+        let chart = null;
+
+        function log(msg) {
+            document.getElementById("log").innerHTML += "<div>" + msg + "</div>";
+            console.log(msg);
+        }
+
+        function initChart() {
+            if (chart) chart.dispose();
+            chart = echarts.init(document.getElementById("chart"));
+        }
+
+        window.onload = async function() {
+            log("Fetching data...");
+            const resp = await fetch("/api/relation_data");
+            const data = await resp.json();
+            graphData = data.data;
+            log("Data loaded: " + graphData.nodes.length + " nodes, " + graphData.links.length + " links");
+        };
+
+        function test1() {
+            log("--- Test 1: Clean fields ---");
+            try {
+                const cleanNodes = graphData.nodes.map(n => ({
+                    id: n.id,
+                    name: n.name,
+                    category: n.category,
+                    symbolSize: n.symbolSize
+                }));
+                const cleanLinks = graphData.links.map(l => ({
+                    source: l.source,
+                    target: l.target
+                }));
+                initChart();
+                chart.setOption({
+                    series: [{
+                        type: "graph",
+                        layout: "force",
+                        data: cleanNodes,
+                        links: cleanLinks,
+                        categories: graphData.categories,
+                        roam: true,
+                        label: { show: true },
+                        force: { repulsion: 200, edgeLength: 80 }
+                    }]
+                });
+                log("Test 1 SUCCESS!");
+            } catch (e) {
+                log("Test 1 FAILED: " + e.message);
+            }
+        }
+
+        function test2() {
+            log("--- Test 2: Small batch ---");
+            try {
+                const smallNodes = graphData.nodes.slice(0, 20);
+                const nodeIds = new Set(smallNodes.map(n => n.id));
+                const smallLinks = graphData.links.filter(l =>
+                    nodeIds.has(String(l.source)) && nodeIds.has(String(l.target))
+                );
+                log("Small batch: " + smallNodes.length + " nodes, " + smallLinks.length + " links");
+                initChart();
+                chart.setOption({
+                    series: [{
+                        type: "graph",
+                        layout: "force",
+                        data: smallNodes,
+                        links: smallLinks,
+                        categories: graphData.categories,
+                        roam: true,
+                        label: { show: true },
+                        force: { repulsion: 200, edgeLength: 80 }
+                    }]
+                });
+                log("Test 2 SUCCESS!");
+            } catch (e) {
+                log("Test 2 FAILED: " + e.message);
+            }
+        }
+
+        function test3() {
+            log("--- Test 3: Duplicate IDs ---");
+            const ids = new Set();
+            const dupes = [];
+            graphData.nodes.forEach(n => {
+                if (ids.has(n.id)) dupes.push(n.id);
+                ids.add(n.id);
+            });
+            log("Duplicate IDs: " + dupes.length);
+            if (dupes.length > 0) log("First few: " + dupes.slice(0, 5).join(", "));
+        }
+
+        function test4() {
+            log("--- Test 4: Invalid links ---");
+            const nodeIds = new Set(graphData.nodes.map(n => String(n.id)));
+            let invalid = 0;
+            graphData.links.forEach(l => {
+                if (!nodeIds.has(String(l.source))) {
+                    invalid++;
+                    if (invalid <= 5) log("Invalid source: " + l.source);
+                }
+                if (!nodeIds.has(String(l.target))) {
+                    invalid++;
+                    if (invalid <= 5) log("Invalid target: " + l.target);
+                }
+            });
+            log("Total invalid links: " + invalid);
+        }
+    </script>
+</body>
+</html>

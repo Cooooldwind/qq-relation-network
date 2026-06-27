@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ECharts Graph Test - Real Data</title>
+    <script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #chart { width: 100vw; height: 100vh; background: #1a1a2e; }
+        #log { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.8); padding: 10px; font-family: monospace; font-size: 12px; z-index: 999; max-width: 400px; max-height: 80vh; overflow: auto; }
+    </style>
+</head>
+<body>
+    <div id="log">Loading...</div>
+    <div id="chart"></div>
+    <script>
+        function log(msg) {
+            document.getElementById("log").innerHTML += msg + "<br>";
+            console.log(msg);
+        }
+
+        window.onload = async function() {
+            log("Page loaded");
+            log("echarts: " + (typeof echarts));
+
+            try {
+                log("Fetching data...");
+                const resp = await fetch("/api/relation_data");
+                const data = await resp.json();
+                log("Data loaded: ok=" + data.ok);
+                if (!data.ok) {
+                    log("Error: " + data.error);
+                    return;
+                }
+
+                const graphData = data.data;
+                log("Nodes: " + graphData.nodes.length);
+                log("Links: " + graphData.links.length);
+                log("Categories: " + JSON.stringify(graphData.categories));
+
+                log("First node: " + JSON.stringify(graphData.nodes[0]));
+                log("First link: " + JSON.stringify(graphData.links[0]));
+
+                var chartDom = document.getElementById("chart");
+                var myChart = echarts.init(chartDom);
+                log("Chart initialized");
+
+                var option = {
+                    tooltip: {},
+                    series: [{
+                        type: "graph",
+                        layout: "force",
+                        data: graphData.nodes,
+                        links: graphData.links,
+                        categories: graphData.categories,
+                        roam: true,
+                        draggable: true,
+                        label: {
+                            show: true,
+                            position: "right"
+                        },
+                        lineStyle: {
+                            color: "source",
+                            curveness: 0.1,
+                            opacity: 0.4
+                        },
+                        emphasis: {
+                            focus: "adjacency"
+                        },
+                        force: {
+                            repulsion: 200,
+                            edgeLength: [50, 150],
+                            gravity: 0.1,
+                            friction: 0.6
+                        }
+                    }]
+                };
+
+                log("Setting option...");
+                myChart.setOption(option);
+                log("SUCCESS! Chart rendered.");
+            } catch (e) {
+                log("ERROR: " + e.message);
+                log("Stack: " + e.stack);
+            }
+        };
+    </script>
+</body>
+</html>
