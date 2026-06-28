@@ -18,6 +18,9 @@
                     <span class="status-dot"></span>
                     <span class="status-text">未连接</span>
                 </div>
+                <div id="perfLevelBadge" class="status-badge status-connected" style="margin-left: 8px;">
+                    <span class="status-text">性能: 流畅</span>
+                </div>
                 <button id="btnMultiSelect" class="btn btn-secondary">
                     ☑️ 多选模式
                 </button>
@@ -112,6 +115,36 @@
                 </div>
 
                 <div class="panel">
+                    <h3>📏 节点大小说明</h3>
+                    <div class="size-legend">
+                        <div class="size-legend-item">
+                            <span class="size-dot" style="width:10px;height:10px;"></span>
+                            <span class="size-label">少量关联 (&lt;10)</span>
+                        </div>
+                        <div class="size-legend-item">
+                            <span class="size-dot" style="width:16px;height:16px;border:2px solid #fff;"></span>
+                            <span class="size-label">数十人 (10~99)</span>
+                        </div>
+                        <div class="size-legend-item">
+                            <span class="size-dot" style="width:22px;height:22px;border:2px solid #fff;"></span>
+                            <span class="size-label">百人群 (100~999)</span>
+                        </div>
+                        <div class="size-legend-item">
+                            <span class="size-dot" style="width:28px;height:28px;border:3px solid #fff;"></span>
+                            <span class="size-label">千人群 (1k~9k)</span>
+                        </div>
+                        <div class="size-legend-item">
+                            <span class="size-dot" style="width:36px;height:36px;border:4px solid #fff;"></span>
+                            <span class="size-label">万人群 (1万+)</span>
+                        </div>
+                        <div class="size-legend-item" style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0;">
+                            <span class="size-dot friend-dot" style="width:14px;height:14px;background:#4A90D9;border:1px solid #fff;"></span>
+                            <span class="size-label">好友（白色边框）</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
                     <h3>⚙️ 加载设置</h3>
                     <div class="setting-item">
                         <label>线程数</label>
@@ -153,6 +186,7 @@
         <div id="toast" class="toast"></div>
     </div>
 
+    <script src="js/force-config.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

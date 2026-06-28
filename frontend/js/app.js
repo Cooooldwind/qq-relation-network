@@ -4,11 +4,11 @@ let graphData = {
     nodes: [],
     links: [],
     categories: [
-        { name: "自己", itemStyle: { color: "#FFD700", shadowBlur: 8, shadowColor: "rgba(255,255,255,0.5)" } },
-        { name: "好友", itemStyle: { color: "#4A90D9", shadowBlur: 8, shadowColor: "rgba(255,255,255,0.4)" } },
-        { name: "共同群好友", itemStyle: { color: "#87CEEB", shadowBlur: 8, shadowColor: "rgba(255,255,255,0.4)" } },
-        { name: "仅同群", itemStyle: { color: "#B0C4DE", shadowBlur: 8, shadowColor: "rgba(255,255,255,0.4)" } },
-        { name: "群", itemStyle: { color: "#E74C3C", shadowBlur: 8, shadowColor: "rgba(255,255,255,0.4)" } }
+        { name: "自己", itemStyle: { color: "#FFD700", shadowBlur: 8, shadowColor: "rgba(0,0,0,0.5)" } },
+        { name: "好友", itemStyle: { color: "#4A90D9", shadowBlur: 8, shadowColor: "rgba(0,0,0,0.5)" } },
+        { name: "共同群好友", itemStyle: { color: "#87CEEB", shadowBlur: 8, shadowColor: "rgba(0,0,0,0.5)" } },
+        { name: "仅同群", itemStyle: { color: "#B0C4DE", shadowBlur: 8, shadowColor: "rgba(0,0,0,0.5)" } },
+        { name: "群", itemStyle: { color: "#E74C3C", shadowBlur: 8, shadowColor: "rgba(0,0,0,0.5)" } }
     ]
 };
 let nodeMap = {};
@@ -22,8 +22,6 @@ let showLabels = true;
 
 let viewMode = "default";
 let focusedNodeId = null;
-let clickTimer = null;
-let clickDelay = 300;
 let multiSelectMode = false;
 let multiSelectRelationshipMode = false;
 let selectedNodes = new Set();
@@ -63,8 +61,15 @@ function initChart() {
     bindChartEvents();
 }
 
-function getBaseOption(nodes, links) {
+function getBaseOption(nodes, links, forceConfig) {
+    const level = forceConfig.levelIndex;
+    const showLabelsFinal = level <= 1 && showLabels;
+    const lineOpacities = [0.3, 0.2, 0.1, 0.05, 0.03];
+    const lineOpacity = lineOpacities[Math.min(level, 4)];
+    const enableEmphasis = level <= 2;
+
     return {
+        /*
         tooltip: {
             trigger: "item",
             formatter: function(params) {
@@ -81,6 +86,7 @@ function getBaseOption(nodes, links) {
                 return "";
             }
         },
+        */
         legend: {
             data: ["自己", "好友", "共同群好友", "仅同群", "群"],
             top: 10,
@@ -88,7 +94,7 @@ function getBaseOption(nodes, links) {
             itemWidth: 12,
             itemHeight: 12
         },
-        animationDurationUpdate: 500,
+        animationDurationUpdate: forceConfig.animationDuration,
         animationEasingUpdate: "quinticInOut",
         series: [{
             type: "graph",
@@ -96,10 +102,10 @@ function getBaseOption(nodes, links) {
             data: nodes,
             links: links,
             categories: graphData.categories,
-            roam: true,
-            draggable: true,
+            roam: level <= 3,
+            draggable: false,
             label: {
-                show: showLabels,
+                show: showLabelsFinal,
                 position: "right",
                 formatter: function(params) {
                     if (multiSelectMode || multiSelectRelationshipMode) {
@@ -113,28 +119,38 @@ function getBaseOption(nodes, links) {
                 },
                 rich: {
                     b: {
-                        fontSize: 11
+                        fontSize: level <= 1 ? 11 : (level === 2 ? 10 : 9)
                     }
                 }
             },
             lineStyle: {
                 color: "#aaa",
-                curveness: 0.1,
-                opacity: 0.3
+                curveness: level <= 1 ? 0.1 : 0,
+                opacity: lineOpacity,
+                width: level <= 1 ? 1 : 0.8
             },
-            emphasis: {
+            emphasis: enableEmphasis ? {
                 focus: "adjacency",
                 lineStyle: {
                     width: 3,
                     color: "#888"
                 }
+            } : {
+                focus: "none",
+                lineStyle: {
+                    width: 1
+                }
             },
             force: {
-                repulsion: 100,
-                edgeLength: 50,
-                gravity: 0.1,
-                friction: 0.9
-            }
+                repulsion: forceConfig.repulsion,
+                edgeLength: forceConfig.edgeLength,
+                gravity: forceConfig.gravity,
+                friction: forceConfig.friction,
+                silent: true,
+                iterations: 5,
+            },
+            progressiveThreshold: level >= 2 ? 500 : 0,
+            progressive: level >= 3 ? 200 : 0
         }]
     };
 }
@@ -142,26 +158,32 @@ function getBaseOption(nodes, links) {
 function renderCurrentView() {
     const t0 = performance.now();
     const { nodes, links } = getCurrentViewData();
-    const option = getBaseOption(nodes, links);
+    const forceConfig = ForceConfig.getForceConfig(nodes.length);
+    const option = getBaseOption(nodes, links, forceConfig);
     chart.setOption(option, { notMerge: true, lazyUpdate: false });
     const t1 = performance.now();
     const elapsed = t1 - t0;
-    updatePerformanceMonitor(elapsed);
+    updatePerformanceMonitor(elapsed, nodes.length, forceConfig);
 }
 
-function updatePerformanceMonitor(elapsed) {
+function updatePerformanceMonitor(elapsed, nodeCount, forceConfig) {
     perfHistory.push(elapsed);
     if (perfHistory.length > 10) perfHistory.shift();
     const avg = perfHistory.reduce((a, b) => a + b, 0) / perfHistory.length;
 
     let newLevel = 0;
-    if (avg > 500) newLevel = 3;
-    else if (avg > 250) newLevel = 2;
-    else if (avg > 100) newLevel = 1;
+    if (avg > 500 || nodeCount > 10000) newLevel = 3;
+    else if (avg > 250 || nodeCount > 2000) newLevel = 2;
+    else if (avg > 100 || nodeCount > 500) newLevel = 1;
 
     if (newLevel !== performanceLevel) {
         performanceLevel = newLevel;
         applyPerformanceSettings();
+    }
+
+    const perfBadge = document.getElementById("perfLevelBadge");
+    if (perfBadge && forceConfig) {
+        perfBadge.querySelector(".status-text").textContent = `性能: ${forceConfig.levelLabel} (${nodeCount}节点)`;
     }
 }
 
@@ -170,30 +192,36 @@ function applyPerformanceSettings() {
     const optAcquaintance = document.getElementById("optAcquaintance");
     const optStranger = document.getElementById("optStranger");
 
-    if (performanceLevel >= 1) {
-        if (optLabels.checked) {
+    const nodeCount = graphData.nodes.length;
+    const autoLabelOff = nodeCount > 2000;
+    const autoAcquaintanceOff = nodeCount > 10000;
+    const autoStrangerOff = nodeCount > 50000;
+
+    if (performanceLevel >= 1 || autoLabelOff) {
+        if (optLabels && optLabels.checked) {
             optLabels.checked = false;
             showLabels = false;
         }
     }
-    if (performanceLevel >= 2) {
-        if (optAcquaintance.checked) {
+    if (performanceLevel >= 2 || autoAcquaintanceOff) {
+        if (optAcquaintance && optAcquaintance.checked) {
             optAcquaintance.checked = false;
         }
     }
-    if (performanceLevel >= 3) {
-        if (optStranger.checked) {
+    if (performanceLevel >= 3 || autoStrangerOff) {
+        if (optStranger && optStranger.checked) {
             optStranger.checked = false;
         }
     }
 
-    if (performanceLevel > 0) {
-        const labels = ["标签", "共同群好友", "仅同群"];
-        const disabled = [];
-        if (performanceLevel >= 1) disabled.push(labels[0]);
-        if (performanceLevel >= 2) disabled.push(labels[1]);
-        if (performanceLevel >= 3) disabled.push(labels[2]);
-        showToast(`性能优化：已自动关闭 ${disabled.join("、")}`, "warning");
+    if (performanceLevel > 0 || autoLabelOff) {
+        const labels = [];
+        if (performanceLevel >= 1 || autoLabelOff) labels.push("标签");
+        if (performanceLevel >= 2 || autoAcquaintanceOff) labels.push("共同群好友");
+        if (performanceLevel >= 3 || autoStrangerOff) labels.push("仅同群");
+        if (labels.length > 0) {
+            showToast(`性能优化：已自动关闭 ${labels.join("、")}`, "warning");
+        }
         renderCurrentView();
     }
 }
@@ -206,6 +234,48 @@ function getCurrentViewData() {
         return getFocusedViewData(focusedNodeId);
     }
     return getDefaultViewData();
+}
+
+function enhanceNodeStyles(nodes) {
+    return nodes.map(n => {
+        const level = n.size_level || 0;
+        const baseStyle = n.itemStyle || {};
+        const enhanced = { ...n };
+
+        // 群节点：白色边框，体量越大边框越宽
+        if (n.type === "group") {
+            const borderWidths = [0, 1, 2, 3, 4]; // 体量越大，边框越宽
+            enhanced.itemStyle = {
+                ...baseStyle,
+                borderColor: "#fff",
+                borderWidth: borderWidths[Math.min(level, 4)]
+            };
+        }
+
+        // 好友节点：白色边框 1px
+        if (n.type === "friend") {
+            enhanced.itemStyle = {
+                ...baseStyle,
+                borderColor: "#fff",
+                borderWidth: 1
+            };
+        }
+
+        // 多选模式下的样式处理
+        if (multiSelectMode && !multiSelectRelationshipMode) {
+            const nid = String(n.id);
+            const isSelected = selectedNodes.has(nid);
+            enhanced.itemStyle = {
+                ...enhanced.itemStyle,
+                opacity: isSelected ? 1 : 0.3,
+                borderColor: isSelected ? "#fff" : (enhanced.itemStyle?.borderColor),
+                borderWidth: isSelected ? 2 : (enhanced.itemStyle?.borderWidth || 0)
+            };
+            enhanced.symbolSize = isSelected ? (n.symbolSize || 20) * 1.2 : n.symbolSize || 20;
+        }
+
+        return enhanced;
+    });
 }
 
 function getDefaultViewData() {
@@ -224,24 +294,7 @@ function getDefaultViewData() {
         return true;
     });
 
-    // 多选模式下淡化未选中的节点
-    const nodesToRender = filteredNodes.map(n => {
-        if (multiSelectMode && !multiSelectRelationshipMode) {
-            const nid = String(n.id);
-            const isSelected = selectedNodes.has(nid);
-            return {
-                ...n,
-                itemStyle: {
-                    ...(n.itemStyle || {}),
-                    opacity: isSelected ? 1 : 0.3,
-                    borderColor: isSelected ? "#fff" : undefined,
-                    borderWidth: isSelected ? 2 : 0
-                },
-                symbolSize: isSelected ? (n.symbolSize || 20) * 1.2 : n.symbolSize || 20
-            };
-        }
-        return n;
-    });
+    const nodesToRender = enhanceNodeStyles(filteredNodes);
 
     const visibleIds = new Set(filteredNodes.map(n => String(n.id)));
     const filteredLinks = graphData.links.filter(l =>
@@ -299,7 +352,7 @@ function getFocusedViewData(nodeId) {
         visibleNodeIds.has(String(l.source)) && visibleNodeIds.has(String(l.target))
     );
 
-    return { nodes: filteredNodes, links: filteredLinks };
+    return { nodes: enhanceNodeStyles(filteredNodes), links: filteredLinks };
 }
 
 function getMultiSelectRelationshipViewData() {
@@ -401,7 +454,7 @@ function getMultiSelectRelationshipViewData() {
         visibleNodeIds.has(String(l.source)) && visibleNodeIds.has(String(l.target))
     );
 
-    return { nodes: filteredNodes, links: filteredLinks };
+    return { nodes: enhanceNodeStyles(filteredNodes), links: filteredLinks };
 }
 
 function bindChartEvents() {
@@ -412,28 +465,35 @@ function bindChartEvents() {
             handleBlankClick();
         }
     });
+    chart.on("mouseover", function(params) {
+        if (params.dataType === "node") {
+            handleNodeHover(params);
+        }
+    });
+    chart.on("mouseout", function(params) {
+        if (params.dataType === "node") {
+            handleNodeLeave();
+        }
+    });
 }
 
 function handleNodeClick(params) {
     const nodeId = String(params.data.id);
-    if (clickTimer) {
-        clearTimeout(clickTimer);
-        clickTimer = null;
-        handleNodeDoubleClick(nodeId);
-    } else {
-        clickTimer = setTimeout(() => {
-            clickTimer = null;
-            handleNodeSingleClick(nodeId, params);
-        }, clickDelay);
-    }
-}
-
-function handleNodeSingleClick(nodeId, params) {
     if (multiSelectMode) {
         toggleNodeSelection(nodeId);
         return;
     }
+    hideNodePopup();
+    enterFocusedView(nodeId);
+}
+
+function handleNodeHover(params) {
+    const nodeId = String(params.data.id);
     showNodePopup(nodeId, params.event);
+}
+
+function handleNodeLeave() {
+    hideNodePopup();
 }
 
 function toggleNodeSelection(nodeId) {
@@ -444,11 +504,6 @@ function toggleNodeSelection(nodeId) {
         selectedNodes.add(nid);
     }
     renderCurrentView();
-}
-
-function handleNodeDoubleClick(nodeId) {
-    hideNodePopup();
-    enterFocusedView(nodeId);
 }
 
 function handleBlankClick() {
@@ -722,11 +777,14 @@ function rebuildNodeMap() {
 
 function incrementalUpdate(delta) {
     if (!delta) return;
+
+    const newNodeMap = {};
     delta.new_nodes.forEach(node => {
         const nid = String(node.id);
         if (!nodeMap[nid]) {
             graphData.nodes.push(node);
             nodeMap[nid] = node;
+            newNodeMap[nid] = node;
         }
     });
     delta.new_links.forEach(link => {
@@ -744,7 +802,21 @@ function incrementalUpdate(delta) {
             Object.assign(nodeMap[nid], node);
         }
     });
-    renderCurrentView();
+
+    const totalNodes = graphData.nodes.length;
+    const useIncremental = totalNodes > 500 && delta.new_nodes.length < 500;
+
+    if (useIncremental && chart) {
+        const { nodes, links } = getCurrentViewData();
+        chart.setOption({
+            series: [{
+                data: nodes,
+                links: links
+            }]
+        }, { notMerge: false, lazyUpdate: true });
+    } else {
+        renderCurrentView();
+    }
 }
 
 function updateStats(nodes, links) {

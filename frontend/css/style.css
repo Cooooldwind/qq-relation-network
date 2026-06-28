@@ -618,3 +618,28 @@ body {
 .focused-close:hover {
     background: rgba(255,255,255,0.35);
 }
+
+.size-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.size-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: #666;
+}
+
+.size-dot {
+    display: inline-block;
+    background: #E74C3C;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.friend-dot {
+    background: #4A90D9;
+}

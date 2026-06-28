@@ -1,3 +1,6 @@
+import math
+
+
 class RelationDataProcessor:
     def __init__(self):
         self.nodes = {}
@@ -30,7 +33,8 @@ class RelationDataProcessor:
                 "type": node_type,
                 "category": self._get_category(node_type),
                 "value": 0,
-                "symbolSize": 10,
+                "symbolSize": 8,
+                "size_level": 0,
                 "info": info or {}
             }
         else:
@@ -73,8 +77,31 @@ class RelationDataProcessor:
     def _update_symbol_size(self, node_id):
         if node_id in self.nodes:
             value = self.nodes[node_id]["value"]
-            size = min(max(10, value * 2 + 8), 60)
+            min_size = 8
+            max_size = 80
+            max_value = 50000
+            exponent = 0.7
+
+            if value <= 0:
+                size = min_size
+            else:
+                normalized = (math.log(value + 1) / math.log(max_value + 1)) ** exponent
+                size = min_size + (max_size - min_size) * normalized
+                size = min(max_size, max(min_size, int(round(size))))
+
             self.nodes[node_id]["symbolSize"] = size
+
+            if value < 10:
+                level = 0
+            elif value < 100:
+                level = 1
+            elif value < 1000:
+                level = 2
+            elif value < 10000:
+                level = 3
+            else:
+                level = 4
+            self.nodes[node_id]["size_level"] = level
 
     def set_login_user(self, user_id, nickname):
         self.login_user = str(user_id)
