@@ -18,6 +18,9 @@
                     <span class="status-dot"></span>
                     <span class="status-text">未连接</span>
                 </div>
+                <button id="btnMultiSelect" class="btn btn-secondary">
+                    ☑️ 多选模式
+                </button>
                 <button id="btnRefresh" class="btn btn-secondary" title="刷新数据">
                     🔄 刷新
                 </button>
@@ -67,27 +70,27 @@
                         <label class="option-item">
                             <input type="checkbox" id="optSelf" checked>
                             <span class="color-dot" style="background:#FFD700;"></span>
-                            自己
+                            自己 <span class="opt-count" id="countSelf">0</span>
                         </label>
                         <label class="option-item">
                             <input type="checkbox" id="optFriends" checked>
                             <span class="color-dot" style="background:#4A90D9;"></span>
-                            好友
+                            好友 <span class="opt-count" id="countFriends">0</span>
                         </label>
                         <label class="option-item">
                             <input type="checkbox" id="optAcquaintance" checked>
                             <span class="color-dot" style="background:#87CEEB;"></span>
-                            共同群好友
+                            共同群好友 <span class="opt-count" id="countAcquaintance">0</span>
                         </label>
                         <label class="option-item">
                             <input type="checkbox" id="optStranger">
                             <span class="color-dot" style="background:#B0C4DE;"></span>
-                            仅同群
+                            仅同群 <span class="opt-count" id="countStranger">0</span>
                         </label>
                         <label class="option-item">
                             <input type="checkbox" id="optGroups" checked>
                             <span class="color-dot" style="background:#E74C3C;"></span>
-                            群
+                            群 <span class="opt-count" id="countGroups">0</span>
                         </label>
                     </div>
                     <div class="option-list">

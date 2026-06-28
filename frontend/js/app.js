@@ -24,6 +24,11 @@ let viewMode = "default";
 let focusedNodeId = null;
 let clickTimer = null;
 let clickDelay = 300;
+let multiSelectMode = false;
+let multiSelectRelationshipMode = false;
+let selectedNodes = new Set();
+let performanceLevel = 0;
+let perfHistory = [];
 
 const COLORS = {
     self: "#FFD700",
@@ -96,8 +101,21 @@ function getBaseOption(nodes, links) {
             label: {
                 show: showLabels,
                 position: "right",
-                formatter: "{b}",
-                fontSize: 11
+                formatter: function(params) {
+                    if (multiSelectMode || multiSelectRelationshipMode) {
+                        const nid = String(params.data.id);
+                        if (selectedNodes.has(nid)) {
+                            return `{b|${params.data.name}}`;
+                        }
+                        return "";
+                    }
+                    return `{b|${params.data.name}}`;
+                },
+                rich: {
+                    b: {
+                        fontSize: 11
+                    }
+                }
             },
             lineStyle: {
                 color: "#aaa",
@@ -122,12 +140,68 @@ function getBaseOption(nodes, links) {
 }
 
 function renderCurrentView() {
+    const t0 = performance.now();
     const { nodes, links } = getCurrentViewData();
     const option = getBaseOption(nodes, links);
     chart.setOption(option, { notMerge: true, lazyUpdate: false });
+    const t1 = performance.now();
+    const elapsed = t1 - t0;
+    updatePerformanceMonitor(elapsed);
+}
+
+function updatePerformanceMonitor(elapsed) {
+    perfHistory.push(elapsed);
+    if (perfHistory.length > 10) perfHistory.shift();
+    const avg = perfHistory.reduce((a, b) => a + b, 0) / perfHistory.length;
+
+    let newLevel = 0;
+    if (avg > 500) newLevel = 3;
+    else if (avg > 250) newLevel = 2;
+    else if (avg > 100) newLevel = 1;
+
+    if (newLevel !== performanceLevel) {
+        performanceLevel = newLevel;
+        applyPerformanceSettings();
+    }
+}
+
+function applyPerformanceSettings() {
+    const optLabels = document.getElementById("optLabels");
+    const optAcquaintance = document.getElementById("optAcquaintance");
+    const optStranger = document.getElementById("optStranger");
+
+    if (performanceLevel >= 1) {
+        if (optLabels.checked) {
+            optLabels.checked = false;
+            showLabels = false;
+        }
+    }
+    if (performanceLevel >= 2) {
+        if (optAcquaintance.checked) {
+            optAcquaintance.checked = false;
+        }
+    }
+    if (performanceLevel >= 3) {
+        if (optStranger.checked) {
+            optStranger.checked = false;
+        }
+    }
+
+    if (performanceLevel > 0) {
+        const labels = ["标签", "共同群好友", "仅同群"];
+        const disabled = [];
+        if (performanceLevel >= 1) disabled.push(labels[0]);
+        if (performanceLevel >= 2) disabled.push(labels[1]);
+        if (performanceLevel >= 3) disabled.push(labels[2]);
+        showToast(`性能优化：已自动关闭 ${disabled.join("、")}`, "warning");
+        renderCurrentView();
+    }
 }
 
 function getCurrentViewData() {
+    if (multiSelectRelationshipMode) {
+        return getMultiSelectRelationshipViewData();
+    }
     if (viewMode === "focused" && focusedNodeId) {
         return getFocusedViewData(focusedNodeId);
     }
@@ -150,12 +224,31 @@ function getDefaultViewData() {
         return true;
     });
 
+    // 多选模式下淡化未选中的节点
+    const nodesToRender = filteredNodes.map(n => {
+        if (multiSelectMode && !multiSelectRelationshipMode) {
+            const nid = String(n.id);
+            const isSelected = selectedNodes.has(nid);
+            return {
+                ...n,
+                itemStyle: {
+                    ...(n.itemStyle || {}),
+                    opacity: isSelected ? 1 : 0.3,
+                    borderColor: isSelected ? "#fff" : undefined,
+                    borderWidth: isSelected ? 2 : 0
+                },
+                symbolSize: isSelected ? (n.symbolSize || 20) * 1.2 : n.symbolSize || 20
+            };
+        }
+        return n;
+    });
+
     const visibleIds = new Set(filteredNodes.map(n => String(n.id)));
     const filteredLinks = graphData.links.filter(l =>
         visibleIds.has(String(l.source)) && visibleIds.has(String(l.target))
     );
 
-    return { nodes: filteredNodes, links: filteredLinks };
+    return { nodes: nodesToRender, links: filteredLinks };
 }
 
 function getFocusedViewData(nodeId) {
@@ -209,6 +302,108 @@ function getFocusedViewData(nodeId) {
     return { nodes: filteredNodes, links: filteredLinks };
 }
 
+function getMultiSelectRelationshipViewData() {
+    if (selectedNodes.size === 0) {
+        return { nodes: [], links: [] };
+    }
+
+    const showAcquaintance = document.getElementById("optAcquaintance").checked;
+    const showStranger = document.getElementById("optStranger").checked;
+    const visibleNodeIds = new Set(selectedNodes);
+
+    // 找出选中的群节点和非群节点
+    const selectedGroupIds = new Set();
+    const selectedNonGroupIds = new Set();
+    selectedNodes.forEach(nid => {
+        const node = nodeMap[nid];
+        if (node && node.type === "group") {
+            selectedGroupIds.add(nid);
+        } else {
+            selectedNonGroupIds.add(nid);
+        }
+    });
+
+    // 找出连接选中节点的群（如果选中了多个非群节点，找它们的共同群）
+    const connectingGroups = new Set();
+    if (selectedNonGroupIds.size >= 2) {
+        graphData.links.forEach(link => {
+            const src = String(link.source);
+            const tgt = String(link.target);
+            const srcNode = nodeMap[src];
+            const tgtNode = nodeMap[tgt];
+            if (srcNode?.type === "group" && selectedNonGroupIds.has(tgt)) {
+                connectingGroups.add(src);
+            } else if (tgtNode?.type === "group" && selectedNonGroupIds.has(src)) {
+                connectingGroups.add(tgt);
+            }
+        });
+    }
+
+    // 如果选中了多个群，找出这些群的共同成员
+    const connectingMembers = new Set();
+    if (selectedGroupIds.size >= 2) {
+        graphData.links.forEach(link => {
+            const src = String(link.source);
+            const tgt = String(link.target);
+            const srcNode = nodeMap[src];
+            const tgtNode = nodeMap[tgt];
+            if (selectedGroupIds.has(src) && tgtNode && tgtNode.type !== "group") {
+                if (showAcquaintance || tgtNode.type !== "acquaintance") {
+                    if (showStranger || tgtNode.type !== "stranger") {
+                        connectingMembers.add(tgt);
+                    }
+                }
+            } else if (selectedGroupIds.has(tgt) && srcNode && srcNode.type !== "group") {
+                if (showAcquaintance || srcNode.type !== "acquaintance") {
+                    if (showStranger || srcNode.type !== "stranger") {
+                        connectingMembers.add(src);
+                    }
+                }
+            }
+        });
+        // 只保留同时属于多个选中群的成员
+        const groupMemberCount = {};
+        connectingMembers.forEach(mid => {
+            groupMemberCount[mid] = 0;
+            selectedGroupIds.forEach(gid => {
+                const key = mid < gid ? `${mid}-${gid}` : `${gid}-${mid}`;
+                if (linkMap[key]) {
+                    groupMemberCount[mid]++;
+                }
+            });
+        });
+        Object.keys(groupMemberCount).forEach(mid => {
+            if (groupMemberCount[mid] >= 2) {
+                visibleNodeIds.add(mid);
+            }
+        });
+    }
+
+    // 添加这些群
+    connectingGroups.forEach(gid => visibleNodeIds.add(gid));
+
+    // 添加_self节点
+    const selfNode = graphData.nodes.find(n => n.type === "self");
+    if (selfNode && selectedNodes.size > 1) {
+        visibleNodeIds.add(String(selfNode.id));
+    }
+
+    // 过滤节点
+    const filteredNodes = graphData.nodes.filter(n => {
+        if (!visibleNodeIds.has(String(n.id))) return false;
+        if (n.type === "acquaintance" && !showAcquaintance) return false;
+        if (n.type === "stranger" && !showStranger) return false;
+        return true;
+    });
+
+    // 过滤连线（只保留两端都在可见节点中的）
+    const filteredLinks = graphData.links.filter(l =>
+        visibleNodeIds.has(String(l.source)) && visibleNodeIds.has(String(l.target))
+    );
+
+    return { nodes: filteredNodes, links: filteredLinks };
+}
+
 function bindChartEvents() {
     chart.on("click", function(params) {
         if (params.dataType === "node") {
@@ -234,7 +429,21 @@ function handleNodeClick(params) {
 }
 
 function handleNodeSingleClick(nodeId, params) {
+    if (multiSelectMode) {
+        toggleNodeSelection(nodeId);
+        return;
+    }
     showNodePopup(nodeId, params.event);
+}
+
+function toggleNodeSelection(nodeId) {
+    const nid = String(nodeId);
+    if (selectedNodes.has(nid)) {
+        selectedNodes.delete(nid);
+    } else {
+        selectedNodes.add(nid);
+    }
+    renderCurrentView();
 }
 
 function handleNodeDoubleClick(nodeId) {
@@ -244,8 +453,13 @@ function handleNodeDoubleClick(nodeId) {
 
 function handleBlankClick() {
     hideNodePopup();
+    if (multiSelectRelationshipMode) {
+        exitMultiSelectRelationship();
+        return;
+    }
     if (viewMode === "focused") {
         exitFocusedView();
+        return;
     }
 }
 
@@ -359,7 +573,51 @@ function exitFocusedView() {
     renderCurrentView();
 }
 
+function toggleMultiSelectMode() {
+    if (multiSelectRelationshipMode) {
+        exitMultiSelectMode();
+        return;
+    }
+
+    if (multiSelectMode) {
+        if (selectedNodes.size < 2) {
+            showToast("请选择至少2个节点", "warning");
+            return;
+        }
+        enterMultiSelectRelationship();
+    } else {
+        multiSelectMode = true;
+        selectedNodes.clear();
+        document.getElementById("btnMultiSelect").textContent = "✔️ 查看关系";
+        showToast("多选模式：点击节点选择/取消，再次点击按钮查看关系网", "info");
+        renderCurrentView();
+    }
+}
+
+function enterMultiSelectRelationship() {
+    multiSelectRelationshipMode = true;
+    document.getElementById("btnMultiSelect").textContent = "❌ 退出";
+    const selectedNames = Array.from(selectedNodes).map(id => nodeMap[id]?.name || id).slice(0, 3).join(", ");
+    showToast(`显示 ${selectedNames}${selectedNodes.size > 3 ? "..." : ""} 的关系网`, "info");
+    renderCurrentView();
+}
+
+function exitMultiSelectRelationship() {
+    multiSelectRelationshipMode = false;
+    document.getElementById("btnMultiSelect").textContent = "✔️ 查看关系";
+    renderCurrentView();
+}
+
+function exitMultiSelectMode() {
+    multiSelectMode = false;
+    multiSelectRelationshipMode = false;
+    selectedNodes.clear();
+    document.getElementById("btnMultiSelect").textContent = "☑️ 多选模式";
+    renderCurrentView();
+}
+
 function bindEvents() {
+    document.getElementById("btnMultiSelect").addEventListener("click", toggleMultiSelectMode);
     document.getElementById("btnRefresh").addEventListener("click", refreshData);
     document.getElementById("btnLoadAll").addEventListener("click", startLoadingAll);
     document.getElementById("btnStop").addEventListener("click", stopLoading);
@@ -492,6 +750,19 @@ function incrementalUpdate(delta) {
 function updateStats(nodes, links) {
     document.getElementById("statNodes").textContent = nodes;
     document.getElementById("statLinks").textContent = links;
+    updateTypeCounts();
+}
+
+function updateTypeCounts() {
+    const counts = { self: 0, friend: 0, acquaintance: 0, stranger: 0, group: 0 };
+    graphData.nodes.forEach(n => {
+        if (counts[n.type] !== undefined) counts[n.type]++;
+    });
+    document.getElementById("countSelf").textContent = counts.self;
+    document.getElementById("countFriends").textContent = counts.friend;
+    document.getElementById("countAcquaintance").textContent = counts.acquaintance;
+    document.getElementById("countStranger").textContent = counts.stranger;
+    document.getElementById("countGroups").textContent = counts.group;
 }
 
 function renderGroupList() {

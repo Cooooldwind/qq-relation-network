@@ -242,6 +242,12 @@ body {
     display: inline-block;
 }
 
+.opt-count {
+    color: #999;
+    font-size: 12px;
+    margin-left: auto;
+}
+
 .group-search {
     margin-bottom: 10px;
 }
