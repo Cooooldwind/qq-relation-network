@@ -43,15 +43,18 @@
 1. 下载地址：https://github.com/NapNeko/NapCatQQ/releases
 2. 下载最新版本的 `NapCat.Shell.zip`
 3. 双击目录下 `launcher.bat` 即可启动 如果是 Win10 则使用 `launcher-win10.bat`
+
+![启动 NapCat](tutorial/1-3.png)
+
 4. 扫码登录你的QQ账号
 5. 在"网络配置"中添加 HTTP 服务：
-   - 类型：HTTP API
+   - 类型：HTTP服务器
    - 监听地址：`127.0.0.1`
    - 端口：`5700`
    - 复制访问令牌（Token）
    - 勾选"启用"
 
-![NapCat HTTP API 配置](tutorial/1-3.png)
+![网络配置](tutorial/1-5.png)
 
 6. 保存配置并重启 NapCat
 
@@ -63,8 +66,6 @@
 NAPCAT_API_URL = "http://127.0.0.1:5700"
 NAPCAT_ACCESS_TOKEN = "你的访问令牌"
 ```
-
-![后端配置](tutorial/2.png)
 
 - `NAPCAT_API_URL`：NapCatQQ 的 HTTP API 地址，默认 `http://127.0.0.1:5700`
 - `NAPCAT_ACCESS_TOKEN`：你在 NapCatQQ 中设置的访问令牌
